@@ -1,5 +1,6 @@
 ---
-
 - name: Reload Apache
-  ansible.builtin.shell: "{{ apache_reload }}"
+  ansible.builtin.service:
+    name: "{{ 'apache2' if ansible_os_family == 'Debian' else 'httpd' }}"
+    state: reloaded
   become: true
