@@ -16,8 +16,6 @@ Table des matières
 
 6. Templates et fichiers
 
-7. Tests
-
 
 Ce rôle prend en charge :
 
