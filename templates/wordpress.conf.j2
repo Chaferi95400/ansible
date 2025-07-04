@@ -1,0 +1,9 @@
+<VirtualHost *:80>
+    ServerAdmin admin@localhost
+    DocumentRoot {{ wordpress_web_dir }}/wordpress
+    <Directory {{ wordpress_web_dir }}/wordpress>
+        AllowOverride All
+    </Directory>
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
