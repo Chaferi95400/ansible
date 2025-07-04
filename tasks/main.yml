@@ -1,0 +1,131 @@
+---
+- name: Mettre à jour le système
+  ansible.builtin.package:
+    name: '*'
+    state: latest
+  become: true
+
+- name: Définir la liste des paquets WordPress pour Debian
+  ansible.builtin.set_fact:
+    wp_packages: ['apache2','php','libapache2-mod-php','php-mysql','mariadb-server','wget','unzip']
+  when: ansible_facts.os_family == 'Debian'
+
+- name: Définir la liste des paquets WordPress pour RedHat
+  ansible.builtin.set_fact:
+    wp_packages: ['httpd','php','php-mysqlnd','mariadb-server','wget','unzip']
+  when: ansible_facts.os_family == 'RedHat'
+
+- name: Installer paquets requis (Debian)
+  ansible.builtin.apt:
+    name: "{{ wp_packages }}"
+    state: present
+    update_cache: true
+  when: ansible_facts.os_family == 'Debian'
+  become: true
+
+- name: Installer paquets requis (RedHat)
+  ansible.builtin.dnf:
+    name: "{{ wp_packages }}"
+    state: present
+  when: ansible_facts.os_family == 'RedHat'
+  become: true
+
+- name: Supprimer la page par défaut d’Apache
+  ansible.builtin.file:
+    path: "{{ wordpress_web_dir }}/index.html"
+    state: absent
+  become: true
+
+- name: Démarrer Apache (Debian)
+  ansible.builtin.service:
+    name: apache2
+    state: started
+  when: ansible_facts.os_family == 'Debian'
+  become: true
+
+- name: Démarrer Apache (RedHat)
+  ansible.builtin.service:
+    name: httpd
+    state: started
+  when: ansible_facts.os_family == 'RedHat'
+  become: true
+
+- name: Démarrer MariaDB
+  ansible.builtin.shell: |
+    mysqld_safe --datadir=/var/lib/mysql &
+  args:
+    executable: /bin/bash
+  become: true
+
+- name: Pause for MariaDB to initialize
+  ansible.builtin.pause:
+    seconds: 10
+
+- name: Attendre disponibilité du port MariaDB
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 3306
+    timeout: 60
+  become: true
+
+- name: Sécuriser MariaDB
+  ansible.builtin.shell: |
+    mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ db_root_password }}';"
+    mysql -uroot -p"{{ db_root_password }}" -e "DELETE FROM mysql.user WHERE User='';"
+    mysql -uroot -p"{{ db_root_password }}" -e "DROP DATABASE IF EXISTS test;"
+    mysql -uroot -p"{{ db_root_password }}" -e "DELETE FROM mysql.db WHERE Db='test' OR Db LIKE 'test\_%';"
+    mysql -uroot -p"{{ db_root_password }}" -e "FLUSH PRIVILEGES;"
+  args:
+    executable: /bin/bash
+  ignore_errors: true
+  become: true
+
+- name: Créer la base et l’utilisateur WordPress
+  ansible.builtin.mysql_db:
+    name: "{{ db_name }}"
+    state: present
+  become: true
+
+- name: Créer l'utilisateur WordPress
+  ansible.builtin.mysql_user:
+    name: "{{ db_user }}"
+    password: "{{ db_user_password }}"
+    priv: "{{ db_name }}.*:ALL"
+    state: present
+  become: true
+
+- name: Télécharger WordPress (ZIP)
+  ansible.builtin.get_url:
+    url: https://wordpress.org/latest.zip
+    dest: /tmp/latest.zip
+    mode: '0644'
+  become: true
+
+- name: Décompresser WordPress
+  ansible.builtin.unarchive:
+    src: /tmp/latest.zip
+    dest: "{{ wordpress_web_dir }}"
+    remote_src: yes
+  become: true
+
+- name: Appliquer ownership et permissions WordPress
+  ansible.builtin.file:
+    path: "{{ wordpress_web_dir }}"
+    recurse: yes
+    owner: www-data if ansible_facts.os_family=='Debian' else apache
+    group: www-data if ansible_facts.os_family=='Debian' else apache
+    mode: '0755'
+  become: true
+
+- name: Créer le wp-config.php à partir du template
+  ansible.builtin.template:
+    src: wp-config.php.j2
+    dest: "{{ wordpress_web_dir }}/wp-config.php"
+  become: true
+
+- name: Copier configuration Apache pour WordPress
+  ansible.builtin.template:
+    src: wordpress.conf.j2
+    dest: "{{ apache_conf_dir }}/wordpress.conf"
+  notify: Reload Apache
+  become: true

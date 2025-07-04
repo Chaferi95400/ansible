@@ -1,0 +1,8 @@
+---
+db_root_password: "examplerootPW"
+db_name: "wordpress"
+db_user: "example"
+db_user_password: "examplePW"
+wordpress_web_dir: "/var/www/html"
+apache_conf_path: >-
+  {{ '/etc/httpd/conf/httpd.conf' if ansible_os_family == 'RedHat' else '/etc/apache2/sites-available/wordpress.conf' }}
